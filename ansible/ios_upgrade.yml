@@ -1,0 +1,58 @@
+---
+- name: Upgrade a Cisco IOS Switch
+  hosts: 2960-all
+
+  tasks:
+  - name: GATHERING FACTS
+    ios_facts:
+       gather_subset: hardware
+    tags: always
+
+  - name: COPYING IMAGE TO DEVICE FLASH
+    ntc_file_copy:
+      platform: cisco_ios_ssh
+      local_file: images/c2960x-universalk9-mz.152-2.E8.bin
+      host: "{{inventory_hostname}}"
+      username: "{{ username }}"
+      password: "{{ password}}"
+    when: ansible_net_version !='15.2(2)E8'
+    tags: copy
+
+  - name: SETTING BOOT IMAGE
+    ios_config:
+       lines:
+         - no boot system
+         - boot system flash:/c2960x-universalk9-mz.152-2.E8.bin
+    when: ansible_net_version !='15.2(2)E8'
+    tags: install
+
+  - name: SAVING CONFIGS
+    ntc_save_config:
+        platform: cisco_ios_ssh
+        host: "{{inventory_hostname}}"
+        username: "{{username}}"
+        password: "{{password}}"
+        local_file: backup/{{inventory_hostname}}.cfg
+    when: ansible_net_version !='15.2(2)E8'
+    tags: backup
+
+  - name: RELOADING THE DEVICE
+    ios_command:
+      commands:
+        - command: 'reload'
+          prompt: 'Proceed with reload? [confirm]'
+          answer: c
+    tags: reload
+
+  - name: VERIFYING CONNECTIVITY
+    wait_for:
+         port: 22
+         host: "{{inventory_hostname}}"
+         timeout: 300
+  - ios_command:
+        commands: ping 8.8.8.8
+        wait_for:
+        - result[0] contains "!!!"
+    register: result
+    failed_when: "not '!!!' in result.std.stdout[0]"
+    tags: verify
